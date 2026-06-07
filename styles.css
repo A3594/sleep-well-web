@@ -350,6 +350,7 @@ svg {
 }
 
 .music-card input,
+.music-card select,
 .music-fields input {
   width: 100%;
   min-height: 42px;
@@ -357,6 +358,23 @@ svg {
   border-radius: 8px;
   padding: 0 10px;
   background: #fbfcfe;
+}
+
+.music-card input[type="file"] {
+  min-height: 0;
+  padding: 10px;
+}
+
+.music-source-row {
+  display: grid;
+  gap: 6px;
+}
+
+.music-source-row small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .music-card button,

@@ -1,5 +1,8 @@
 const STORAGE_KEY = "sukmyeon-web-records";
 const SETTINGS_KEY = "sukmyeon-web-settings";
+const MUSIC_DB_NAME = "sukmyeon-web-music";
+const MUSIC_DB_VERSION = 1;
+const MUSIC_STORE_NAME = "audioFiles";
 const CALIBRATION_MS = 15000;
 const MAX_SAMPLES = 180;
 
@@ -13,9 +16,17 @@ const DEFAULT_SETTINGS = {
   keepAwake: true,
   startMusicEnabled: true,
   startMusicDuration: 15,
+  startMusicSource: "generated",
+  startMusicLink: "",
+  startMusicFileName: "",
+  startMusicFileStored: false,
   wakeMusicEnabled: false,
   wakeMusicTime: "07:00",
   wakeMusicDuration: 10,
+  wakeMusicSource: "generated",
+  wakeMusicLink: "",
+  wakeMusicFileName: "",
+  wakeMusicFileStored: false,
   lastWakeMusicDate: "",
 };
 
@@ -77,10 +88,22 @@ const exportButton = document.querySelector("[data-export]");
 const clearButton = document.querySelector("[data-clear]");
 const startMusicEnabled = document.querySelector("[data-start-music-enabled]");
 const startMusicDuration = document.querySelector("[data-start-music-duration]");
+const startMusicSource = document.querySelector("[data-start-music-source]");
+const startMusicFile = document.querySelector("[data-start-music-file]");
+const startMusicFileRow = document.querySelector("[data-start-music-file-row]");
+const startMusicFileName = document.querySelector("[data-start-music-file-name]");
+const startMusicLink = document.querySelector("[data-start-music-link]");
+const startMusicLinkRow = document.querySelector("[data-start-music-link-row]");
 const startMusicPreview = document.querySelector("[data-start-music-preview]");
 const wakeMusicEnabled = document.querySelector("[data-wake-music-enabled]");
 const wakeMusicTime = document.querySelector("[data-wake-music-time]");
 const wakeMusicDuration = document.querySelector("[data-wake-music-duration]");
+const wakeMusicSource = document.querySelector("[data-wake-music-source]");
+const wakeMusicFile = document.querySelector("[data-wake-music-file]");
+const wakeMusicFileRow = document.querySelector("[data-wake-music-file-row]");
+const wakeMusicFileName = document.querySelector("[data-wake-music-file-name]");
+const wakeMusicLink = document.querySelector("[data-wake-music-link]");
+const wakeMusicLinkRow = document.querySelector("[data-wake-music-link-row]");
 const wakeMusicPreview = document.querySelector("[data-wake-music-preview]");
 const musicStatus = document.querySelector("[data-music-status]");
 const musicStop = document.querySelector("[data-music-stop]");
@@ -104,6 +127,8 @@ let musicContext = null;
 let musicNodes = [];
 let musicTimer = null;
 let musicState = null;
+let musicAudio = null;
+let musicObjectUrl = null;
 
 let session = createSession();
 
@@ -131,10 +156,16 @@ sharedBedInput?.addEventListener("change", updateSettings);
 keepAwakeInput?.addEventListener("change", updateSettings);
 startMusicEnabled?.addEventListener("change", updateSettings);
 startMusicDuration?.addEventListener("input", updateSettings);
+startMusicSource?.addEventListener("change", updateSettings);
+startMusicFile?.addEventListener("change", (event) => handleMusicFileSelect("sleep", event));
+startMusicLink?.addEventListener("input", updateSettings);
 startMusicPreview?.addEventListener("click", () => playMusic("sleep", "preview"));
 wakeMusicEnabled?.addEventListener("change", updateSettings);
 wakeMusicTime?.addEventListener("change", updateSettings);
 wakeMusicDuration?.addEventListener("input", updateSettings);
+wakeMusicSource?.addEventListener("change", updateSettings);
+wakeMusicFile?.addEventListener("change", (event) => handleMusicFileSelect("wake", event));
+wakeMusicLink?.addEventListener("input", updateSettings);
 wakeMusicPreview?.addEventListener("click", () => playMusic("wake", "preview"));
 musicStop?.addEventListener("click", () => stopMusic());
 notificationButton?.addEventListener("click", requestNotificationPermission);
@@ -727,6 +758,13 @@ async function playMusic(kind, reason = "alarm") {
   const context = await ensureMusicContext();
   const minutes = kind === "wake" ? settings.wakeMusicDuration : settings.startMusicDuration;
   const duration = reason === "preview" ? 45 : clampMusicMinutes(minutes, 10) * 60;
+  const configuredMusic = await playConfiguredMusic(kind, duration);
+  if (configuredMusic) {
+    notifyMusic(kind, reason);
+    renderMusicStatus();
+    return;
+  }
+
   const now = context.currentTime;
   const isWake = kind === "wake";
   const master = context.createGain();
@@ -756,6 +794,7 @@ async function playMusic(kind, reason = "alarm") {
   musicState = {
     kind,
     reason,
+    source: "generated",
     startedAtMs: Date.now(),
     endsAtMs: Date.now() + duration * 1000,
   };
@@ -765,10 +804,104 @@ async function playMusic(kind, reason = "alarm") {
   renderMusicStatus();
 }
 
+async function playConfiguredMusic(kind, duration) {
+  const sourceType = getMusicSetting(kind, "Source");
+  if (sourceType === "generated") return false;
+
+  if (sourceType === "file") {
+    const storedFile = await getStoredMusicFile(kind).catch(() => null);
+    if (!storedFile?.blob) {
+      setMusicSetting(kind, "FileStored", false);
+      saveSettings(settings);
+      renderSettings();
+      return false;
+    }
+    return playBlobWithMusicContext(kind, storedFile.blob, duration).catch(() => playBlobWithAudioElement(kind, storedFile.blob, duration));
+  }
+
+  if (sourceType === "link") {
+    const url = getMusicSetting(kind, "Link").trim();
+    if (!url) return false;
+    try {
+      const response = await fetch(url, { mode: "cors" });
+      if (!response.ok) throw new Error("Audio link failed.");
+      const blob = await response.blob();
+      return await playBlobWithMusicContext(kind, blob, duration);
+    } catch {
+      return playUrlWithAudioElement(kind, url, duration);
+    }
+  }
+
+  return false;
+}
+
+async function playBlobWithMusicContext(kind, blob, duration) {
+  const context = await ensureMusicContext();
+  const arrayBuffer = await blob.arrayBuffer();
+  const audioBuffer = await context.decodeAudioData(arrayBuffer.slice(0));
+  const now = context.currentTime;
+  const source = context.createBufferSource();
+  const gain = context.createGain();
+
+  source.buffer = audioBuffer;
+  source.loop = true;
+  gain.gain.setValueAtTime(0, now);
+  gain.gain.linearRampToValueAtTime(kind === "wake" ? 0.65 : 0.48, now + 1.5);
+  gain.gain.linearRampToValueAtTime(0, now + duration);
+  source.connect(gain);
+  gain.connect(context.destination);
+  source.start(now);
+  source.stop(now + duration);
+
+  musicNodes.push(source, gain);
+  startMusicState(kind, "file", duration);
+  return true;
+}
+
+function playBlobWithAudioElement(kind, blob, duration) {
+  const objectUrl = URL.createObjectURL(blob);
+  return playUrlWithAudioElement(kind, objectUrl, duration, objectUrl);
+}
+
+function playUrlWithAudioElement(kind, url, duration, objectUrl = null) {
+  musicAudio = new Audio(url);
+  musicObjectUrl = objectUrl;
+  musicAudio.loop = true;
+  musicAudio.volume = kind === "wake" ? 0.7 : 0.5;
+  musicAudio.addEventListener("ended", () => stopMusic(), { once: true });
+  startMusicState(kind, getMusicSetting(kind, "Source"), duration);
+  return musicAudio.play().then(() => true).catch((error) => {
+    stopMusic();
+    throw error;
+  });
+}
+
+function startMusicState(kind, source, duration) {
+  musicState = {
+    kind,
+    reason: "configured",
+    source,
+    startedAtMs: Date.now(),
+    endsAtMs: Date.now() + duration * 1000,
+  };
+  musicTimer = window.setTimeout(() => stopMusic(), duration * 1000);
+  if (musicStop) musicStop.disabled = false;
+}
+
 function stopMusic(options = {}) {
   const { closeContext = false } = options;
   if (musicTimer) window.clearTimeout(musicTimer);
   musicTimer = null;
+  if (musicAudio) {
+    musicAudio.pause();
+    musicAudio.removeAttribute("src");
+    musicAudio.load();
+    musicAudio = null;
+  }
+  if (musicObjectUrl) {
+    URL.revokeObjectURL(musicObjectUrl);
+    musicObjectUrl = null;
+  }
   musicNodes.forEach((node) => {
     try {
       node.stop?.();
@@ -810,6 +943,87 @@ function notifyMusic(kind, reason) {
   showNotification("숙면웹", message);
 }
 
+async function handleMusicFileSelect(kind, event) {
+  const file = event.target?.files?.[0];
+  if (!file) return;
+  if (!file.type.startsWith("audio/")) {
+    alert("오디오 파일만 선택할 수 있습니다.");
+    event.target.value = "";
+    return;
+  }
+
+  try {
+    await saveStoredMusicFile(kind, file);
+    setMusicSetting(kind, "Source", "file");
+    setMusicSetting(kind, "FileName", file.name);
+    setMusicSetting(kind, "FileStored", true);
+    saveSettings(settings);
+    renderSettings();
+    showNotification("숙면웹", `${getMusicKindName(kind)} 파일을 저장했습니다.`);
+  } catch {
+    alert("음악 파일 저장에 실패했습니다. 파일 크기가 너무 크거나 브라우저 저장공간이 부족할 수 있습니다.");
+  } finally {
+    event.target.value = "";
+  }
+}
+
+function openMusicDb() {
+  return new Promise((resolve, reject) => {
+    if (!("indexedDB" in window)) {
+      reject(new Error("IndexedDB is not supported."));
+      return;
+    }
+
+    const request = indexedDB.open(MUSIC_DB_NAME, MUSIC_DB_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(MUSIC_STORE_NAME)) {
+        db.createObjectStore(MUSIC_STORE_NAME, { keyPath: "id" });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function saveStoredMusicFile(kind, file) {
+  const db = await openMusicDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(MUSIC_STORE_NAME, "readwrite");
+    transaction.objectStore(MUSIC_STORE_NAME).put({
+      id: kind,
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      updatedAt: Date.now(),
+      blob: file,
+    });
+    transaction.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    transaction.onerror = () => {
+      db.close();
+      reject(transaction.error);
+    };
+  });
+}
+
+async function getStoredMusicFile(kind) {
+  const db = await openMusicDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(MUSIC_STORE_NAME, "readonly");
+    const request = transaction.objectStore(MUSIC_STORE_NAME).get(kind);
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error);
+    transaction.oncomplete = () => db.close();
+    transaction.onerror = () => {
+      db.close();
+      reject(transaction.error);
+    };
+  });
+}
+
 function showNotification(title, body) {
   if (!("Notification" in window) || Notification.permission !== "granted") return;
   new Notification(title, { body, icon: "./icon.svg" });
@@ -832,8 +1046,8 @@ function renderMusicStatus() {
   }
 
   const summaries = [];
-  if (settings.startMusicEnabled) summaries.push(`시작 ${settings.startMusicDuration}분`);
-  if (settings.wakeMusicEnabled) summaries.push(`기상 ${settings.wakeMusicTime} · ${settings.wakeMusicDuration}분`);
+  if (settings.startMusicEnabled) summaries.push(`시작 ${settings.startMusicDuration}분 · ${getMusicSourceLabel("sleep")}`);
+  if (settings.wakeMusicEnabled) summaries.push(`기상 ${settings.wakeMusicTime} · ${settings.wakeMusicDuration}분 · ${getMusicSourceLabel("wake")}`);
   musicStatus.textContent = summaries.length ? summaries.join(" · ") : "음악 꺼짐";
 }
 
@@ -848,9 +1062,13 @@ function updateSettings() {
   settings.keepAwake = Boolean(keepAwakeInput?.checked);
   settings.startMusicEnabled = Boolean(startMusicEnabled?.checked);
   settings.startMusicDuration = clampMusicMinutes(startMusicDuration?.value, settings.startMusicDuration);
+  settings.startMusicSource = normalizeMusicSource(startMusicSource?.value || settings.startMusicSource);
+  settings.startMusicLink = normalizeMusicLink(startMusicLink?.value || "");
   settings.wakeMusicEnabled = Boolean(wakeMusicEnabled?.checked);
   settings.wakeMusicTime = wakeMusicTime?.value || settings.wakeMusicTime;
   settings.wakeMusicDuration = clampMusicMinutes(wakeMusicDuration?.value, settings.wakeMusicDuration);
+  settings.wakeMusicSource = normalizeMusicSource(wakeMusicSource?.value || settings.wakeMusicSource);
+  settings.wakeMusicLink = normalizeMusicLink(wakeMusicLink?.value || "");
   if (session.baselineDb !== null) session.thresholdDb = session.baselineDb + Number(settings.sensitivity);
   saveSettings(settings);
   renderSettings();
@@ -872,9 +1090,19 @@ function renderSettings() {
   if (keepAwakeInput) keepAwakeInput.checked = settings.keepAwake;
   if (startMusicEnabled) startMusicEnabled.checked = settings.startMusicEnabled;
   if (startMusicDuration) startMusicDuration.value = String(settings.startMusicDuration);
+  if (startMusicSource) startMusicSource.value = settings.startMusicSource;
+  if (startMusicLink) startMusicLink.value = settings.startMusicLink;
+  if (startMusicFileName) startMusicFileName.textContent = settings.startMusicFileStored ? settings.startMusicFileName || "저장된 파일" : "선택된 파일 없음";
+  if (startMusicFileRow) startMusicFileRow.hidden = settings.startMusicSource !== "file";
+  if (startMusicLinkRow) startMusicLinkRow.hidden = settings.startMusicSource !== "link";
   if (wakeMusicEnabled) wakeMusicEnabled.checked = settings.wakeMusicEnabled;
   if (wakeMusicTime) wakeMusicTime.value = settings.wakeMusicTime;
   if (wakeMusicDuration) wakeMusicDuration.value = String(settings.wakeMusicDuration);
+  if (wakeMusicSource) wakeMusicSource.value = settings.wakeMusicSource;
+  if (wakeMusicLink) wakeMusicLink.value = settings.wakeMusicLink;
+  if (wakeMusicFileName) wakeMusicFileName.textContent = settings.wakeMusicFileStored ? settings.wakeMusicFileName || "저장된 파일" : "선택된 파일 없음";
+  if (wakeMusicFileRow) wakeMusicFileRow.hidden = settings.wakeMusicSource !== "file";
+  if (wakeMusicLinkRow) wakeMusicLinkRow.hidden = settings.wakeMusicSource !== "link";
   renderMusicStatus();
 }
 
@@ -1064,6 +1292,37 @@ function getRecordSleeperMeta(record) {
   return `코골이 ${record.snoreCount || stats.self.snore || 0}회`;
 }
 
+function getMusicKindName(kind) {
+  return kind === "wake" ? "기상음악" : "시작음악";
+}
+
+function getMusicPrefix(kind) {
+  return kind === "wake" ? "wakeMusic" : "startMusic";
+}
+
+function getMusicSetting(kind, suffix) {
+  return settings[`${getMusicPrefix(kind)}${suffix}`] ?? "";
+}
+
+function setMusicSetting(kind, suffix, value) {
+  settings[`${getMusicPrefix(kind)}${suffix}`] = value;
+}
+
+function getMusicSourceLabel(kind) {
+  const source = getMusicSetting(kind, "Source");
+  if (source === "file") return getMusicSetting(kind, "FileStored") ? "휴대폰 파일" : "파일 선택 필요";
+  if (source === "link") return getMusicSetting(kind, "Link") ? "음악 링크" : "링크 필요";
+  return "기본음";
+}
+
+function normalizeMusicSource(value) {
+  return ["generated", "file", "link"].includes(value) ? value : "generated";
+}
+
+function normalizeMusicLink(value) {
+  return String(value || "").trim();
+}
+
 function loadSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
@@ -1076,6 +1335,14 @@ function loadSettings() {
     if (!["self", "partner", "center"].includes(nextSettings.phoneSide)) nextSettings.phoneSide = DEFAULT_SETTINGS.phoneSide;
     nextSettings.startMusicDuration = clampMusicMinutes(nextSettings.startMusicDuration, DEFAULT_SETTINGS.startMusicDuration);
     nextSettings.wakeMusicDuration = clampMusicMinutes(nextSettings.wakeMusicDuration, DEFAULT_SETTINGS.wakeMusicDuration);
+    nextSettings.startMusicSource = normalizeMusicSource(nextSettings.startMusicSource);
+    nextSettings.wakeMusicSource = normalizeMusicSource(nextSettings.wakeMusicSource);
+    nextSettings.startMusicLink = normalizeMusicLink(nextSettings.startMusicLink);
+    nextSettings.wakeMusicLink = normalizeMusicLink(nextSettings.wakeMusicLink);
+    nextSettings.startMusicFileName = String(nextSettings.startMusicFileName || "");
+    nextSettings.wakeMusicFileName = String(nextSettings.wakeMusicFileName || "");
+    nextSettings.startMusicFileStored = Boolean(nextSettings.startMusicFileStored);
+    nextSettings.wakeMusicFileStored = Boolean(nextSettings.wakeMusicFileStored);
     return nextSettings;
   } catch {
     return { ...DEFAULT_SETTINGS };

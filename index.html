@@ -86,6 +86,23 @@
                 <span>재생 시간</span>
                 <input type="number" min="1" max="30" step="1" inputmode="numeric" data-start-music-duration />
               </label>
+              <label>
+                <span>음악 선택</span>
+                <select data-start-music-source>
+                  <option value="generated">기본음</option>
+                  <option value="file">휴대폰 파일</option>
+                  <option value="link">음악 링크</option>
+                </select>
+              </label>
+              <label class="music-source-row" data-start-music-file-row hidden>
+                <span>휴대폰 파일</span>
+                <input type="file" accept="audio/*" data-start-music-file />
+                <small data-start-music-file-name>선택된 파일 없음</small>
+              </label>
+              <label class="music-source-row" data-start-music-link-row hidden>
+                <span>음악 링크</span>
+                <input type="url" inputmode="url" placeholder="https://..." data-start-music-link />
+              </label>
               <button type="button" data-start-music-preview>미리 듣기</button>
             </article>
             <article class="music-card">
@@ -109,6 +126,23 @@
                   <input type="number" min="1" max="30" step="1" inputmode="numeric" data-wake-music-duration />
                 </label>
               </div>
+              <label>
+                <span>음악 선택</span>
+                <select data-wake-music-source>
+                  <option value="generated">기본음</option>
+                  <option value="file">휴대폰 파일</option>
+                  <option value="link">음악 링크</option>
+                </select>
+              </label>
+              <label class="music-source-row" data-wake-music-file-row hidden>
+                <span>휴대폰 파일</span>
+                <input type="file" accept="audio/*" data-wake-music-file />
+                <small data-wake-music-file-name>선택된 파일 없음</small>
+              </label>
+              <label class="music-source-row" data-wake-music-link-row hidden>
+                <span>음악 링크</span>
+                <input type="url" inputmode="url" placeholder="https://..." data-wake-music-link />
+              </label>
               <button type="button" data-wake-music-preview>미리 듣기</button>
             </article>
             <button class="music-stop-button" type="button" data-music-stop disabled>음악 정지</button>
