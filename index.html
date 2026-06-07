@@ -93,6 +93,17 @@
           <article><span>깸 가능성</span><strong data-awake-count>0회</strong></article>
         </div>
 
+        <section class="sleeper-panel" data-sleeper-panel>
+          <div class="panel-line">
+            <div>
+              <strong>소리 구분</strong>
+              <span data-sleeper-summary>1명 기준</span>
+            </div>
+            <strong data-sleeper-mode-label>1명</strong>
+          </div>
+          <div class="sleeper-grid" data-sleeper-grid></div>
+        </section>
+
         <section class="event-panel">
           <div class="panel-line">
             <div>
@@ -124,6 +135,40 @@
           <h2>설정</h2>
         </div>
         <section class="setting-panel">
+          <label class="setting-title">
+            <span>수면 인원</span>
+            <strong data-sleep-mode-label>2명</strong>
+          </label>
+          <div class="segmented-control" role="radiogroup" aria-label="수면 인원">
+            <label>
+              <input type="radio" name="sleep-mode" value="single" data-sleep-mode />
+              <span>1명</span>
+            </label>
+            <label>
+              <input type="radio" name="sleep-mode" value="two" data-sleep-mode />
+              <span>2명</span>
+            </label>
+          </div>
+          <div class="sleeper-settings" data-two-person-settings>
+            <label>
+              <span>내 이름</span>
+              <input type="text" maxlength="8" data-primary-name />
+            </label>
+            <label>
+              <span>상대 이름</span>
+              <input type="text" maxlength="8" data-secondary-name />
+            </label>
+            <label>
+              <span>폰 위치</span>
+              <select data-phone-side>
+                <option value="self">내 쪽</option>
+                <option value="partner">상대 쪽</option>
+                <option value="center">가운데</option>
+              </select>
+            </label>
+          </div>
+        </section>
+        <section class="setting-panel">
           <label for="sensitivity-range">
             <span>민감도</span>
             <strong data-sensitivity-label>보통</strong>
@@ -133,8 +178,8 @@
         <section class="setting-panel">
           <label class="switch-row">
             <span>
-              <strong>같이 자는 모드</strong>
-              <small>반복되는 코골이 추정 소리는 따로 표시하고 점수 반영을 완화합니다.</small>
+              <strong>코골이 점수 완화</strong>
+              <small>반복되는 코골이 추정 소리의 점수 반영을 줄입니다.</small>
             </span>
             <input type="checkbox" data-shared-bed />
           </label>

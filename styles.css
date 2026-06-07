@@ -129,6 +129,7 @@ svg {
 .hero-panel,
 .depth-panel,
 .meditation-panel,
+.sleeper-panel,
 .metrics-grid article,
 .event-panel,
 .records-summary article,
@@ -208,6 +209,7 @@ svg {
 .records-summary span,
 .record-list span,
 .setting-panel label > span,
+.sleeper-settings label span,
 .switch-row small {
   color: var(--muted);
   font-size: 0.86rem;
@@ -263,6 +265,7 @@ svg {
 
 .depth-panel,
 .meditation-panel,
+.sleeper-panel,
 .event-panel,
 .setting-panel {
   padding: 14px;
@@ -339,6 +342,34 @@ svg {
 .record-list button {
   background: #e6f4f0;
   color: var(--primary);
+}
+
+.sleeper-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.sleeper-card {
+  min-height: 74px;
+  padding: 12px;
+  border: 1px solid #e5edf1;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.sleeper-card span,
+.sleeper-card small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.sleeper-card strong {
+  display: block;
+  margin: 7px 0 3px;
+  font-size: 1.18rem;
 }
 
 .sound-canvas {
@@ -438,6 +469,65 @@ svg {
   display: flex;
   justify-content: space-between;
   gap: 14px;
+}
+
+.setting-title {
+  margin-bottom: 12px;
+}
+
+.segmented-control {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.segmented-control label {
+  display: block;
+}
+
+.segmented-control input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.segmented-control span {
+  display: grid;
+  min-height: 42px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.segmented-control input:checked + span {
+  border-color: rgba(18, 128, 106, 0.34);
+  background: #e6f4f0;
+  color: var(--primary);
+}
+
+.sleeper-settings {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.sleeper-settings label {
+  display: grid;
+  gap: 6px;
+}
+
+.sleeper-settings input,
+.sleeper-settings select {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+  color: var(--ink);
 }
 
 .setting-panel input[type="range"] {
@@ -542,7 +632,8 @@ svg {
 
 @media (max-width: 390px) {
   .hero-panel,
-  .meditation-controls {
+  .meditation-controls,
+  .sleeper-grid {
     grid-template-columns: 1fr;
   }
 

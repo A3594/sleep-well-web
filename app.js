@@ -5,6 +5,10 @@ const MAX_SAMPLES = 180;
 
 const DEFAULT_SETTINGS = {
   sensitivity: 12,
+  sleepMode: "two",
+  primaryName: "나",
+  secondaryName: "상대",
+  phoneSide: "self",
   sharedBedMode: true,
   keepAwake: true,
   meditationEnabled: false,
@@ -51,6 +55,16 @@ const lastScore = document.querySelector("[data-last-score]");
 const deepShare = document.querySelector("[data-deep-share]");
 const recordCount = document.querySelector("[data-record-count]");
 const recordList = document.querySelector("[data-record-list]");
+const sleeperPanel = document.querySelector("[data-sleeper-panel]");
+const sleeperGrid = document.querySelector("[data-sleeper-grid]");
+const sleeperSummary = document.querySelector("[data-sleeper-summary]");
+const sleeperModeLabel = document.querySelector("[data-sleeper-mode-label]");
+const sleepModeLabel = document.querySelector("[data-sleep-mode-label]");
+const sleepModeInputs = document.querySelectorAll("[data-sleep-mode]");
+const twoPersonSettings = document.querySelector("[data-two-person-settings]");
+const primaryNameInput = document.querySelector("[data-primary-name]");
+const secondaryNameInput = document.querySelector("[data-secondary-name]");
+const phoneSideInput = document.querySelector("[data-phone-side]");
 const sensitivityInput = document.querySelector("[data-sensitivity]");
 const sensitivityLabel = document.querySelector("[data-sensitivity-label]");
 const sharedBedInput = document.querySelector("[data-shared-bed]");
@@ -101,6 +115,10 @@ dimButton?.addEventListener("click", showOverlay);
 overlayClose?.addEventListener("click", hideOverlay);
 markAwakeButton?.addEventListener("click", markAwake);
 sensitivityInput?.addEventListener("input", updateSettings);
+sleepModeInputs.forEach((input) => input.addEventListener("change", updateSettings));
+primaryNameInput?.addEventListener("input", updateSettings);
+secondaryNameInput?.addEventListener("input", updateSettings);
+phoneSideInput?.addEventListener("change", updateSettings);
 sharedBedInput?.addEventListener("change", updateSettings);
 keepAwakeInput?.addEventListener("change", updateSettings);
 meditationEnabled?.addEventListener("change", updateSettings);
@@ -267,9 +285,11 @@ function finalizeNoiseCandidate(endAtMs) {
   const maxOverDb = candidate.maxDb - session.baselineDb;
   const avgOverDb = avgDb - session.baselineDb;
   const type = getNoiseType(durationMs, maxOverDb, avgOverDb);
+  const sleeper = classifyEventSleeper(type, durationMs, maxOverDb, avgOverDb);
   const event = {
     id: createId(),
     type,
+    sleeper,
     startedAt: new Date(candidate.startedAtMs).toISOString(),
     endedAt: new Date(endAtMs).toISOString(),
     durationMs,
@@ -282,10 +302,32 @@ function finalizeNoiseCandidate(endAtMs) {
 }
 
 function getNoiseType(durationMs, maxOverDb, avgOverDb) {
-  if (settings.sharedBedMode && isLikelySnore(durationMs, maxOverDb, avgOverDb)) return "snore";
+  if (isLikelySnore(durationMs, maxOverDb, avgOverDb)) return "snore";
   if (durationMs >= 18000) return "long";
   if (maxOverDb >= Number(settings.sensitivity) + 12) return "loud";
   return "noise";
+}
+
+function classifyEventSleeper(type, durationMs, maxOverDb, avgOverDb) {
+  if (!usesTwoPersonMode()) return "self";
+  if (type === "manual") return "self";
+  if (settings.phoneSide === "center") return "unknown";
+
+  const nearSleeper = settings.phoneSide === "partner" ? "partner" : "self";
+  const farSleeper = nearSleeper === "self" ? "partner" : "self";
+  const sensitivity = Number(settings.sensitivity);
+
+  if (type === "snore") {
+    if (maxOverDb >= sensitivity + 10 || avgOverDb >= sensitivity + 4) return nearSleeper;
+    if (maxOverDb <= sensitivity + 2 && durationMs >= 2500) return farSleeper;
+    return "unknown";
+  }
+
+  if ((type === "loud" || type === "long") && maxOverDb >= sensitivity + 14) {
+    return nearSleeper;
+  }
+
+  return "unknown";
 }
 
 function isLikelySnore(durationMs, maxOverDb, avgOverDb) {
@@ -316,7 +358,7 @@ function detectAwakeWindow(event) {
 function markAwake() {
   if (!session.active) return;
   const now = new Date().toISOString();
-  session.events.push({ id: createId(), type: "manual", startedAt: now, endedAt: now, durationMs: 0 });
+  session.events.push({ id: createId(), type: "manual", sleeper: "self", startedAt: now, endedAt: now, durationMs: 0 });
   session.wakeWindows.push({ id: createId(), startedAt: now, endedAt: now });
   renderMonitor();
 }
@@ -332,7 +374,9 @@ function createRecord() {
   const snoreEvents = session.events.filter((event) => event.type === "snore");
   const noisyPercent = session.totalMeasuredMs ? (session.noisyMs / session.totalMeasuredMs) * 100 : 0;
   const depthSummary = summarizeDepth(minutes, session.events);
-  const score = clamp(Math.round(100 - noiseEvents.length * 3 - snoreEvents.length * 1.1 - session.wakeWindows.length * 10 - noisyPercent * 0.45), 0, 100);
+  const sleeperSummary = getSleeperStats(session.events);
+  const snorePenalty = settings.sharedBedMode ? 1.1 : 2.2;
+  const score = clamp(Math.round(100 - noiseEvents.length * 3 - snoreEvents.length * snorePenalty - session.wakeWindows.length * 10 - noisyPercent * 0.45), 0, 100);
 
   return {
     id: createId(),
@@ -347,6 +391,7 @@ function createRecord() {
     events: session.events,
     minutes,
     depthSummary,
+    sleeperSummary,
     settings: { ...settings },
   };
 }
@@ -414,7 +459,8 @@ function renderMonitor() {
   const depth = getLiveDepth();
   const noiseEvents = session.events.filter((event) => ["noise", "long", "loud"].includes(event.type));
   const snoreEvents = session.events.filter((event) => event.type === "snore");
-  const score = session.active ? Math.max(0, 100 - noiseEvents.length * 3 - snoreEvents.length - session.wakeWindows.length * 8) : records[0]?.score ?? null;
+  const snorePenalty = settings.sharedBedMode ? 1 : 2;
+  const score = session.active ? Math.max(0, 100 - noiseEvents.length * 3 - snoreEvents.length * snorePenalty - session.wakeWindows.length * 8) : records[0]?.score ?? null;
 
   if (scoreValue) scoreValue.textContent = score === null ? "--" : String(Math.round(score));
   if (scoreLabel) scoreLabel.textContent = session.active ? "예상 점수" : "최근 점수";
@@ -437,6 +483,7 @@ function renderMonitor() {
   if (snoreCount) snoreCount.textContent = `${snoreEvents.length}회`;
   if (awakeCount) awakeCount.textContent = `${session.wakeWindows.length}회`;
   if (eventSummary) eventSummary.textContent = getEventSummary(noiseEvents, snoreEvents);
+  renderSleeperPanel();
   if (startButton) startButton.disabled = session.active;
   if (stopButton) stopButton.disabled = !session.active;
   if (dimButton) dimButton.disabled = !session.active;
@@ -456,14 +503,52 @@ function getStatusText() {
 
 function getHint() {
   if (session.status === "calibrating") return "방 안의 평소 조용한 소리를 기준으로 잡는 중입니다.";
-  if (session.status === "monitoring") return settings.sharedBedMode ? "같이 자는 모드로 코골이 추정을 따로 기록합니다." : "방 전체 소리를 기준으로 기록합니다.";
+  if (session.status === "monitoring") return usesTwoPersonMode() ? "두 사람 소리를 나누어 추정 기록합니다." : "한 사람 기준으로 수면 소리를 기록합니다.";
   return "시작하면 15초 동안 조용한 기준을 잡습니다.";
 }
 
 function getEventSummary(noiseEvents, snoreEvents) {
   if (noiseEvents.length === 0 && snoreEvents.length === 0) return session.active ? "조용합니다." : "아직 기록 없음";
+  if (usesTwoPersonMode() && snoreEvents.length > 0) {
+    const stats = getSleeperStats(session.events);
+    return `${getSleeperName("self")} ${stats.self.snore}회 · ${getSleeperName("partner")} ${stats.partner.snore}회 · 구분 ${stats.unknown.snore}회`;
+  }
   if (snoreEvents.length > 0) return `방해 ${noiseEvents.length}회 · 코골이 추정 ${snoreEvents.length}회`;
   return `방해 ${noiseEvents.length}회 · 깸 가능성 ${session.wakeWindows.length}회`;
+}
+
+function renderSleeperPanel() {
+  if (!sleeperPanel || !sleeperGrid) return;
+
+  const stats = getSleeperStats(session.events);
+  const cards = usesTwoPersonMode()
+    ? [
+        ["self", getSleeperName("self"), stats.self],
+        ["partner", getSleeperName("partner"), stats.partner],
+        ["unknown", "구분 어려움", stats.unknown],
+      ]
+    : [["self", getSleeperName("self"), stats.self]];
+
+  sleeperPanel.hidden = false;
+  if (sleeperModeLabel) sleeperModeLabel.textContent = usesTwoPersonMode() ? "2명" : "1명";
+  if (sleeperSummary) {
+    sleeperSummary.textContent = usesTwoPersonMode() ? `${getPhoneSideLabel()} 기준 추정` : "1명 기준";
+  }
+
+  sleeperGrid.innerHTML = "";
+  cards.forEach(([, label, item]) => {
+    const card = document.createElement("article");
+    const name = document.createElement("span");
+    const snore = document.createElement("strong");
+    const detail = document.createElement("small");
+
+    card.className = "sleeper-card";
+    name.textContent = label;
+    snore.textContent = `코골이 ${item.snore}회`;
+    detail.textContent = `방해 ${item.noise}회`;
+    card.append(name, snore, detail);
+    sleeperGrid.append(card);
+  });
 }
 
 function renderEvents() {
@@ -486,7 +571,7 @@ function renderEvents() {
     const meta = document.createElement("span");
     const chip = document.createElement("span");
     row.className = "event-item";
-    title.textContent = getEventTitle(event.type);
+    title.textContent = getEventTitle(event.type, event.sleeper);
     meta.textContent = `${formatClock(event.startedAt)} · ${formatDurationCompact(event.durationMs)}`;
     chip.className = "event-chip";
     chip.textContent = event.maxOverDb ? `${Math.max(0, event.maxOverDb).toFixed(0)}↑` : "";
@@ -517,8 +602,9 @@ function renderRecords() {
     const title = document.createElement("strong");
     const meta = document.createElement("span");
     const button = document.createElement("button");
+    const sleeperMeta = getRecordSleeperMeta(record);
     title.textContent = formatDate(record.startedAt);
-    meta.textContent = `${formatDuration(record.durationMs)} · ${record.score}점 · 코골이 ${record.snoreCount || 0}회`;
+    meta.textContent = `${formatDuration(record.durationMs)} · ${record.score}점 · ${sleeperMeta}`;
     button.type = "button";
     button.textContent = "보기";
     body.append(title, meta);
@@ -691,6 +777,11 @@ function renderMeditationStatus() {
 }
 
 function updateSettings() {
+  const selectedSleepMode = Array.from(sleepModeInputs).find((input) => input.checked)?.value;
+  settings.sleepMode = selectedSleepMode || settings.sleepMode;
+  settings.primaryName = normalizeName(primaryNameInput?.value, DEFAULT_SETTINGS.primaryName);
+  settings.secondaryName = normalizeName(secondaryNameInput?.value, DEFAULT_SETTINGS.secondaryName);
+  settings.phoneSide = phoneSideInput?.value || settings.phoneSide;
   settings.sensitivity = Number(sensitivityInput?.value || settings.sensitivity);
   settings.sharedBedMode = Boolean(sharedBedInput?.checked);
   settings.keepAwake = Boolean(keepAwakeInput?.checked);
@@ -703,6 +794,14 @@ function updateSettings() {
 }
 
 function renderSettings() {
+  sleepModeInputs.forEach((input) => {
+    input.checked = input.value === settings.sleepMode;
+  });
+  if (sleepModeLabel) sleepModeLabel.textContent = usesTwoPersonMode() ? "2명" : "1명";
+  if (twoPersonSettings) twoPersonSettings.hidden = !usesTwoPersonMode();
+  if (primaryNameInput) primaryNameInput.value = getSleeperName("self");
+  if (secondaryNameInput) secondaryNameInput.value = getSleeperName("partner");
+  if (phoneSideInput) phoneSideInput.value = settings.phoneSide;
   if (sensitivityInput) sensitivityInput.value = String(settings.sensitivity);
   if (sensitivityLabel) sensitivityLabel.textContent = settings.sensitivity <= 9 ? "예민" : settings.sensitivity >= 18 ? "둔감" : "보통";
   if (sharedBedInput) sharedBedInput.checked = settings.sharedBedMode;
@@ -750,7 +849,12 @@ function renderOverlay() {
   const elapsedMs = session.active ? Date.now() - session.startedAtMs : 0;
   if (overlayStatus) overlayStatus.textContent = getStatusText();
   if (overlayTime) overlayTime.textContent = formatDuration(elapsedMs);
-  if (overlayDetail) overlayDetail.textContent = `이벤트 ${session.events.length}회 · 코골이 ${session.events.filter((event) => event.type === "snore").length}회`;
+  if (overlayDetail) {
+    const stats = getSleeperStats(session.events);
+    overlayDetail.textContent = usesTwoPersonMode()
+      ? `${getSleeperName("self")} ${stats.self.snore}회 · ${getSleeperName("partner")} ${stats.partner.snore}회`
+      : `이벤트 ${session.events.length}회 · 코골이 ${session.events.filter((event) => event.type === "snore").length}회`;
+  }
 }
 
 function setError(message) {
@@ -842,9 +946,65 @@ function clearRecords() {
   renderMonitor();
 }
 
+function usesTwoPersonMode() {
+  return settings.sleepMode === "two";
+}
+
+function normalizeName(value, fallback) {
+  const text = String(value || "").trim();
+  return text.length > 0 ? text.slice(0, 8) : fallback;
+}
+
+function getSleeperName(sleeper) {
+  if (sleeper === "self") return normalizeName(settings.primaryName, DEFAULT_SETTINGS.primaryName);
+  if (sleeper === "partner") return normalizeName(settings.secondaryName, DEFAULT_SETTINGS.secondaryName);
+  return "구분 어려움";
+}
+
+function getPhoneSideLabel() {
+  return {
+    self: `${getSleeperName("self")} 쪽`,
+    partner: `${getSleeperName("partner")} 쪽`,
+    center: "가운데",
+  }[settings.phoneSide] || "폰 위치";
+}
+
+function getSleeperStats(events) {
+  const stats = {
+    self: { snore: 0, noise: 0 },
+    partner: { snore: 0, noise: 0 },
+    unknown: { snore: 0, noise: 0 },
+  };
+
+  events.forEach((event) => {
+    const key = event.sleeper === "self" || event.sleeper === "partner" ? event.sleeper : "unknown";
+    if (event.type === "snore") stats[key].snore += 1;
+    if (["noise", "long", "loud", "manual"].includes(event.type)) stats[key].noise += 1;
+  });
+
+  return stats;
+}
+
+function getRecordSleeperMeta(record) {
+  const stats = record.sleeperSummary || getSleeperStats(record.events || []);
+  if (record.settings?.sleepMode === "two" || usesTwoPersonMode()) {
+    const selfName = normalizeName(record.settings?.primaryName, DEFAULT_SETTINGS.primaryName);
+    const partnerName = normalizeName(record.settings?.secondaryName, DEFAULT_SETTINGS.secondaryName);
+    return `${selfName} 코골이 ${stats.self.snore}회 · ${partnerName} ${stats.partner.snore}회 · 구분 ${stats.unknown.snore}회`;
+  }
+
+  return `코골이 ${record.snoreCount || stats.self.snore || 0}회`;
+}
+
 function loadSettings() {
   try {
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") };
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
+    const nextSettings = { ...DEFAULT_SETTINGS, ...saved };
+    if (!saved.sleepMode) nextSettings.sleepMode = saved.sharedBedMode === false ? "single" : "two";
+    nextSettings.primaryName = normalizeName(nextSettings.primaryName, DEFAULT_SETTINGS.primaryName);
+    nextSettings.secondaryName = normalizeName(nextSettings.secondaryName, DEFAULT_SETTINGS.secondaryName);
+    if (!["self", "partner", "center"].includes(nextSettings.phoneSide)) nextSettings.phoneSide = DEFAULT_SETTINGS.phoneSide;
+    return nextSettings;
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
@@ -902,8 +1062,10 @@ function getStageColor(stage) {
   return { deep: "#164e63", stable: "#12806a", light: "#b7791f", awake: "#c84a2f" }[stage] || "#7a8793";
 }
 
-function getEventTitle(type) {
-  return { noise: "방해 소리", loud: "큰 소리", long: "긴 소음", snore: "코골이 추정", manual: "깼음 표시" }[type] || "이벤트";
+function getEventTitle(type, sleeper = "unknown") {
+  const title = { noise: "방해 소리", loud: "큰 소리", long: "긴 소음", snore: "코골이 추정", manual: "깼음 표시" }[type] || "이벤트";
+  if (!usesTwoPersonMode()) return title;
+  return `${title} · ${getSleeperName(sleeper)}`;
 }
 
 function formatDuration(milliseconds) {
