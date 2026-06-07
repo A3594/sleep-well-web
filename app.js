@@ -1,6 +1,6 @@
 const STORAGE_KEY = "sukmyeon-web-records";
 const SETTINGS_KEY = "sukmyeon-web-settings";
-const APP_VERSION = "1.6.0";
+const APP_VERSION = "1.6.1";
 const APP_UPDATED_AT = "2026-06-07";
 const DEFAULT_SLEEP_MUSIC_URL = "./sleep-music.m4a";
 const DEFAULT_WAKE_MUSIC_URL = "./wake-music.m4a";
@@ -1249,6 +1249,7 @@ function applyAppUpdate() {
     return;
   }
   waitingServiceWorker.postMessage({ type: "SKIP_WAITING" });
+  window.setTimeout(() => window.location.reload(), 1800);
 }
 
 function renderAppVersion() {
