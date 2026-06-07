@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="숙면웹 아이콘">
+  <rect width="512" height="512" rx="112" fill="#164e63"/>
+  <circle cx="256" cy="256" r="178" fill="#e6f4f0" opacity="0.14"/>
+  <circle cx="216" cy="220" r="118" fill="#f8fafc"/>
+  <circle cx="268" cy="184" r="126" fill="#164e63"/>
+  <path d="M132 350c35 38 86 62 143 62 60 0 114-27 150-69" fill="none" stroke="#e6f4f0" stroke-width="32" stroke-linecap="round"/>
+  <path d="M338 206c28 24 45 59 45 98s-17 74-45 98" fill="none" stroke="#f2b36d" stroke-width="28" stroke-linecap="round"/>
+  <path d="M380 158c43 39 70 95 70 157s-27 118-70 157" fill="none" stroke="#8fd6c7" stroke-width="24" stroke-linecap="round" opacity="0.92"/>
+</svg>

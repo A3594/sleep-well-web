@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#164e63" />
+    <title>숙면웹</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icon-192.png" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="top-bar">
+        <div>
+          <p class="eyebrow">수면 소리 체크</p>
+          <h1>숙면웹</h1>
+        </div>
+        <button class="icon-button" type="button" data-install-button aria-label="앱 설치" title="앱 설치" hidden>
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" /></svg>
+        </button>
+      </header>
+
+      <section class="install-panel" data-install-panel hidden>
+        <div>
+          <strong>홈 화면 설치 가능</strong>
+          <p data-install-message>브라우저 메뉴에서 설치할 수 있습니다.</p>
+        </div>
+        <button type="button" data-install-action>설치</button>
+      </section>
+
+      <section class="screen is-active" id="monitor-screen">
+        <section class="hero-panel">
+          <div class="score-ring" data-score-ring>
+            <div>
+              <span data-score-label>최근 점수</span>
+              <strong data-score-value>--</strong>
+            </div>
+          </div>
+          <div class="hero-copy">
+            <span data-status-label>측정 대기</span>
+            <strong data-session-time>00:00</strong>
+            <small data-session-hint>시작하면 15초 동안 조용한 기준을 잡습니다.</small>
+          </div>
+        </section>
+
+        <div class="main-actions">
+          <button class="primary-action" type="button" data-start>측정 시작</button>
+          <button type="button" data-dim disabled>수면 화면</button>
+          <button type="button" data-stop disabled>종료 저장</button>
+        </div>
+
+        <section class="depth-panel">
+          <div class="panel-line">
+            <div>
+              <strong>잠 깊이 추정</strong>
+              <span data-depth-confidence>소리 기반 참고</span>
+            </div>
+            <strong data-depth-stage>--</strong>
+          </div>
+          <div class="progress-track" aria-hidden="true"><span data-depth-bar></span></div>
+          <p data-depth-note>측정이 시작되면 조용한 구간, 방해 소리, 깸 가능성을 함께 봅니다.</p>
+        </section>
+
+        <section class="meditation-panel">
+          <div class="panel-line">
+            <div>
+              <strong>명상음악 알림</strong>
+              <span data-meditation-status>꺼짐</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" data-meditation-enabled />
+              <span>사용</span>
+            </label>
+          </div>
+          <div class="meditation-controls">
+            <label>
+              <span>알림 시간</span>
+              <input type="time" data-meditation-time />
+            </label>
+            <button type="button" data-meditation-preview>미리 듣기</button>
+            <button type="button" data-meditation-stop disabled>정지</button>
+          </div>
+        </section>
+
+        <canvas class="sound-canvas" data-canvas width="720" height="240" aria-label="실시간 소리 그래프"></canvas>
+
+        <div class="metrics-grid">
+          <article><span>현재 소리</span><strong data-current-level>--</strong></article>
+          <article><span>방해 이벤트</span><strong data-event-count>0회</strong></article>
+          <article><span>코골이 추정</span><strong data-snore-count>0회</strong></article>
+          <article><span>깸 가능성</span><strong data-awake-count>0회</strong></article>
+        </div>
+
+        <section class="event-panel">
+          <div class="panel-line">
+            <div>
+              <strong>밤중 기록</strong>
+              <span data-event-summary>아직 기록 없음</span>
+            </div>
+            <button class="subtle-button" type="button" data-mark-awake disabled>깼음 표시</button>
+          </div>
+          <div class="event-list" data-event-list></div>
+        </section>
+      </section>
+
+      <section class="screen" id="records-screen">
+        <div class="section-heading">
+          <p class="eyebrow">Records</p>
+          <h2>수면 기록</h2>
+        </div>
+        <div class="records-summary">
+          <article><span>최근 점수</span><strong data-last-score>--</strong></article>
+          <article><span>깊은 추정</span><strong data-deep-share>--</strong></article>
+          <article><span>저장된 밤</span><strong data-record-count>0일</strong></article>
+        </div>
+        <div class="record-list" data-record-list></div>
+      </section>
+
+      <section class="screen" id="settings-screen">
+        <div class="section-heading">
+          <p class="eyebrow">Settings</p>
+          <h2>설정</h2>
+        </div>
+        <section class="setting-panel">
+          <label for="sensitivity-range">
+            <span>민감도</span>
+            <strong data-sensitivity-label>보통</strong>
+          </label>
+          <input id="sensitivity-range" type="range" min="6" max="22" step="1" data-sensitivity />
+        </section>
+        <section class="setting-panel">
+          <label class="switch-row">
+            <span>
+              <strong>같이 자는 모드</strong>
+              <small>반복되는 코골이 추정 소리는 따로 표시하고 점수 반영을 완화합니다.</small>
+            </span>
+            <input type="checkbox" data-shared-bed />
+          </label>
+        </section>
+        <section class="setting-panel">
+          <label class="switch-row">
+            <span>
+              <strong>화면 유지</strong>
+              <small>지원 브라우저에서 수면 화면 중 자동 잠금을 줄입니다.</small>
+            </span>
+            <input type="checkbox" data-keep-awake />
+          </label>
+        </section>
+        <div class="data-actions">
+          <button type="button" data-notification-permission>알림 권한</button>
+          <button type="button" data-export>기록 내보내기</button>
+          <button class="danger-button" type="button" data-clear>기록 삭제</button>
+        </div>
+      </section>
+
+      <nav class="bottom-nav" aria-label="주요 화면">
+        <button class="is-active" type="button" data-target="monitor-screen">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3v5" /><path d="M12 16v5" /><path d="M4 12h5" /><path d="M15 12h5" /></svg>
+          <span>측정</span>
+        </button>
+        <button type="button" data-target="records-screen">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 19V5" /><path d="M8 17V9" /><path d="M12 17V7" /><path d="M16 17v-5" /><path d="M20 17V6" /></svg>
+          <span>기록</span>
+        </button>
+        <button type="button" data-target="settings-screen">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" /><path d="M19 12h2" /><path d="M3 12h2" /><path d="M12 3v2" /><path d="M12 19v2" /></svg>
+          <span>설정</span>
+        </button>
+      </nav>
+    </main>
+
+    <div class="sleep-overlay" data-overlay hidden>
+      <button class="overlay-close" type="button" data-overlay-close aria-label="수면 화면 닫기">×</button>
+      <div>
+        <span data-overlay-status>측정 중</span>
+        <strong data-overlay-time>00:00</strong>
+        <small data-overlay-detail>조용한 밤을 기록하는 중</small>
+      </div>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
