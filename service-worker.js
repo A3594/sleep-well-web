@@ -1,4 +1,4 @@
-const CACHE_NAME = "sukmyeon-web-v6";
+const CACHE_NAME = "sukmyeon-web-v7";
 const APP_ASSETS = [
   "./",
   "./index.html",
@@ -8,6 +8,7 @@ const APP_ASSETS = [
   "./icon.svg",
   "./icon-192.png",
   "./icon-512.png",
+  "./wake-music.m4a",
 ];
 
 self.addEventListener("install", (event) => {
