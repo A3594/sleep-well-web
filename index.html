@@ -16,11 +16,20 @@
         <div>
           <p class="eyebrow">수면 소리 체크</p>
           <h1>숙면웹</h1>
+          <span class="version-label" data-app-version>업데이트 확인 중</span>
         </div>
         <button class="icon-button" type="button" data-install-button aria-label="앱 설치" title="앱 설치" hidden>
           <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" /></svg>
         </button>
       </header>
+
+      <section class="update-panel" data-update-panel hidden>
+        <div>
+          <strong>새 업데이트 준비됨</strong>
+          <p data-update-message>업데이트를 적용하면 최신 숙면웹으로 다시 열립니다.</p>
+        </div>
+        <button type="button" data-update-action>업데이트</button>
+      </section>
 
       <section class="install-panel" data-install-panel hidden>
         <div>

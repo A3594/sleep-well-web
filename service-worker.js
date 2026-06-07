@@ -1,4 +1,4 @@
-const CACHE_NAME = "sukmyeon-web-v5";
+const CACHE_NAME = "sukmyeon-web-v6";
 const APP_ASSETS = [
   "./",
   "./index.html",
@@ -12,7 +12,6 @@ const APP_ASSETS = [
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_ASSETS)));
-  self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
@@ -36,4 +35,8 @@ self.addEventListener("fetch", (event) => {
       })
       .catch(() => caches.match(event.request).then((cached) => cached || caches.match("./index.html")))
   );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
 });

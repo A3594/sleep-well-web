@@ -1,5 +1,7 @@
 const STORAGE_KEY = "sukmyeon-web-records";
 const SETTINGS_KEY = "sukmyeon-web-settings";
+const APP_VERSION = "1.4.0";
+const APP_UPDATED_AT = "2026-06-07";
 const MUSIC_DB_NAME = "sukmyeon-web-music";
 const MUSIC_DB_VERSION = 1;
 const MUSIC_STORE_NAME = "audioFiles";
@@ -44,6 +46,10 @@ const installButton = document.querySelector("[data-install-button]");
 const installPanel = document.querySelector("[data-install-panel]");
 const installAction = document.querySelector("[data-install-action]");
 const installMessage = document.querySelector("[data-install-message]");
+const updatePanel = document.querySelector("[data-update-panel]");
+const updateAction = document.querySelector("[data-update-action]");
+const updateMessage = document.querySelector("[data-update-message]");
+const appVersionLabel = document.querySelector("[data-app-version]");
 const scoreRing = document.querySelector("[data-score-ring]");
 const scoreValue = document.querySelector("[data-score-value]");
 const scoreLabel = document.querySelector("[data-score-label]");
@@ -116,6 +122,8 @@ const overlayDetail = document.querySelector("[data-overlay-detail]");
 let settings = loadSettings();
 let records = loadRecords();
 let deferredInstallPrompt = null;
+let waitingServiceWorker = null;
+let reloadingForUpdate = false;
 let audioContext = null;
 let analyser = null;
 let micStream = null;
@@ -173,11 +181,13 @@ exportButton?.addEventListener("click", exportRecords);
 clearButton?.addEventListener("click", clearRecords);
 installButton?.addEventListener("click", installApp);
 installAction?.addEventListener("click", installApp);
+updateAction?.addEventListener("click", applyAppUpdate);
 window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
 window.addEventListener("appinstalled", handleAppInstalled);
 document.addEventListener("visibilitychange", handleVisibilityChange);
 
 registerServiceWorker();
+renderAppVersion();
 renderSettings();
 renderMonitor();
 renderRecords();
@@ -1186,9 +1196,59 @@ function createSession() {
 
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (reloadingForUpdate) return;
+    reloadingForUpdate = true;
+    window.location.reload();
   });
+
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./service-worker.js").then((registration) => {
+      watchServiceWorkerRegistration(registration);
+      registration.update().catch(() => {});
+      window.setInterval(() => registration.update().catch(() => {}), 60 * 60 * 1000);
+    }).catch(() => {});
+  });
+}
+
+function watchServiceWorkerRegistration(registration) {
+  if (registration.waiting && navigator.serviceWorker.controller) {
+    showUpdateAvailable(registration.waiting);
+  }
+
+  registration.addEventListener("updatefound", () => {
+    const newWorker = registration.installing;
+    if (!newWorker) return;
+    newWorker.addEventListener("statechange", () => {
+      if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+        showUpdateAvailable(newWorker);
+      }
+    });
+  });
+}
+
+function showUpdateAvailable(worker) {
+  waitingServiceWorker = worker;
+  if (updatePanel) updatePanel.hidden = false;
+  if (installPanel) installPanel.hidden = true;
+  if (updateMessage) updateMessage.textContent = `현재 ${formatAppVersion()} 사용 중입니다. 업데이트를 적용하면 최신 숙면웹으로 다시 열립니다.`;
+}
+
+function applyAppUpdate() {
+  if (!waitingServiceWorker) {
+    window.location.reload();
+    return;
+  }
+  waitingServiceWorker.postMessage({ type: "SKIP_WAITING" });
+}
+
+function renderAppVersion() {
+  if (appVersionLabel) appVersionLabel.textContent = formatAppVersion();
+}
+
+function formatAppVersion() {
+  return `v${APP_VERSION} · ${APP_UPDATED_AT}`;
 }
 
 function handleBeforeInstallPrompt(event) {
@@ -1204,6 +1264,10 @@ function handleAppInstalled() {
 }
 
 function renderInstallState() {
+  if (waitingServiceWorker) {
+    if (installPanel) installPanel.hidden = true;
+    return;
+  }
   const isInstalled = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
   if (isInstalled) {
     if (installPanel) installPanel.hidden = true;

@@ -89,6 +89,14 @@ h1 {
   line-height: 1.12;
 }
 
+.version-label {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
 h2 {
   font-size: 1.42rem;
 }
@@ -125,6 +133,7 @@ svg {
   display: block;
 }
 
+.update-panel,
 .install-panel,
 .hero-panel,
 .depth-panel,
@@ -141,6 +150,7 @@ svg {
   box-shadow: var(--shadow);
 }
 
+.update-panel,
 .install-panel {
   display: flex;
   justify-content: space-between;
@@ -150,7 +160,13 @@ svg {
   background: var(--soft);
 }
 
+.update-panel {
+  border-color: rgba(183, 121, 31, 0.35);
+  background: #fff8ea;
+}
+
 .install-panel p,
+.update-panel p,
 .depth-panel p {
   margin-top: 6px;
   color: var(--muted);
@@ -158,6 +174,7 @@ svg {
   line-height: 1.45;
 }
 
+.update-panel button,
 .install-panel button,
 .subtle-button,
 .data-actions button,
@@ -170,6 +187,7 @@ svg {
   font-weight: 850;
 }
 
+.update-panel button,
 .install-panel button {
   min-width: 72px;
   background: var(--primary);
