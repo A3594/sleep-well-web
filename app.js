@@ -1,7 +1,8 @@
 const STORAGE_KEY = "sukmyeon-web-records";
 const SETTINGS_KEY = "sukmyeon-web-settings";
-const APP_VERSION = "1.5.0";
+const APP_VERSION = "1.6.0";
 const APP_UPDATED_AT = "2026-06-07";
+const DEFAULT_SLEEP_MUSIC_URL = "./sleep-music.m4a";
 const DEFAULT_WAKE_MUSIC_URL = "./wake-music.m4a";
 const MUSIC_DB_NAME = "sukmyeon-web-music";
 const MUSIC_DB_VERSION = 1;
@@ -19,7 +20,7 @@ const DEFAULT_SETTINGS = {
   keepAwake: true,
   startMusicEnabled: true,
   startMusicDuration: 15,
-  startMusicSource: "generated",
+  startMusicSource: "asset",
   startMusicLink: "",
   startMusicFileName: "",
   startMusicFileStored: false,
@@ -820,7 +821,7 @@ async function playConfiguredMusic(kind, duration) {
   if (sourceType === "generated") return false;
 
   if (sourceType === "asset") {
-    const url = kind === "wake" ? DEFAULT_WAKE_MUSIC_URL : "";
+    const url = kind === "wake" ? DEFAULT_WAKE_MUSIC_URL : DEFAULT_SLEEP_MUSIC_URL;
     if (!url) return false;
     return playUrlWithAudioElement(kind, url, duration).catch(() => false);
   }
@@ -1381,7 +1382,7 @@ function setMusicSetting(kind, suffix, value) {
 
 function getMusicSourceLabel(kind) {
   const source = getMusicSetting(kind, "Source");
-  if (source === "asset") return kind === "wake" ? "기본 기상음악" : "기본 음악";
+  if (source === "asset") return kind === "wake" ? "기본 기상음악" : "기본 잠드는음악";
   if (source === "file") return getMusicSetting(kind, "FileStored") ? "휴대폰 파일" : "파일 선택 필요";
   if (source === "link") return getMusicSetting(kind, "Link") ? "음악 링크" : "링크 필요";
   return "기본음";
@@ -1409,6 +1410,7 @@ function loadSettings() {
     nextSettings.wakeMusicDuration = clampMusicMinutes(nextSettings.wakeMusicDuration, DEFAULT_SETTINGS.wakeMusicDuration);
     nextSettings.startMusicSource = normalizeMusicSource(nextSettings.startMusicSource);
     nextSettings.wakeMusicSource = normalizeMusicSource(nextSettings.wakeMusicSource);
+    if (!saved.startMusicSource || saved.startMusicSource === "generated") nextSettings.startMusicSource = "asset";
     if (!saved.wakeMusicSource || saved.wakeMusicSource === "generated") nextSettings.wakeMusicSource = "asset";
     nextSettings.startMusicLink = normalizeMusicLink(nextSettings.startMusicLink);
     nextSettings.wakeMusicLink = normalizeMusicLink(nextSettings.wakeMusicLink);
