@@ -11,9 +11,12 @@ const DEFAULT_SETTINGS = {
   phoneSide: "self",
   sharedBedMode: true,
   keepAwake: true,
-  meditationEnabled: false,
-  meditationTime: "22:30",
-  lastMeditationDate: "",
+  startMusicEnabled: true,
+  startMusicDuration: 15,
+  wakeMusicEnabled: false,
+  wakeMusicTime: "07:00",
+  wakeMusicDuration: 10,
+  lastWakeMusicDate: "",
 };
 
 const STAGE_LABELS = {
@@ -72,11 +75,15 @@ const keepAwakeInput = document.querySelector("[data-keep-awake]");
 const notificationButton = document.querySelector("[data-notification-permission]");
 const exportButton = document.querySelector("[data-export]");
 const clearButton = document.querySelector("[data-clear]");
-const meditationEnabled = document.querySelector("[data-meditation-enabled]");
-const meditationTime = document.querySelector("[data-meditation-time]");
-const meditationStatus = document.querySelector("[data-meditation-status]");
-const meditationPreview = document.querySelector("[data-meditation-preview]");
-const meditationStop = document.querySelector("[data-meditation-stop]");
+const startMusicEnabled = document.querySelector("[data-start-music-enabled]");
+const startMusicDuration = document.querySelector("[data-start-music-duration]");
+const startMusicPreview = document.querySelector("[data-start-music-preview]");
+const wakeMusicEnabled = document.querySelector("[data-wake-music-enabled]");
+const wakeMusicTime = document.querySelector("[data-wake-music-time]");
+const wakeMusicDuration = document.querySelector("[data-wake-music-duration]");
+const wakeMusicPreview = document.querySelector("[data-wake-music-preview]");
+const musicStatus = document.querySelector("[data-music-status]");
+const musicStop = document.querySelector("[data-music-stop]");
 const overlay = document.querySelector("[data-overlay]");
 const overlayClose = document.querySelector("[data-overlay-close]");
 const overlayStatus = document.querySelector("[data-overlay-status]");
@@ -93,9 +100,10 @@ let sourceNode = null;
 let audioData = null;
 let frameId = null;
 let wakeLock = null;
-let meditationContext = null;
-let meditationNodes = [];
-let meditationTimer = null;
+let musicContext = null;
+let musicNodes = [];
+let musicTimer = null;
+let musicState = null;
 
 let session = createSession();
 
@@ -121,10 +129,14 @@ secondaryNameInput?.addEventListener("input", updateSettings);
 phoneSideInput?.addEventListener("change", updateSettings);
 sharedBedInput?.addEventListener("change", updateSettings);
 keepAwakeInput?.addEventListener("change", updateSettings);
-meditationEnabled?.addEventListener("change", updateSettings);
-meditationTime?.addEventListener("change", updateSettings);
-meditationPreview?.addEventListener("click", () => playMeditation("preview"));
-meditationStop?.addEventListener("click", stopMeditation);
+startMusicEnabled?.addEventListener("change", updateSettings);
+startMusicDuration?.addEventListener("input", updateSettings);
+startMusicPreview?.addEventListener("click", () => playMusic("sleep", "preview"));
+wakeMusicEnabled?.addEventListener("change", updateSettings);
+wakeMusicTime?.addEventListener("change", updateSettings);
+wakeMusicDuration?.addEventListener("input", updateSettings);
+wakeMusicPreview?.addEventListener("click", () => playMusic("wake", "preview"));
+musicStop?.addEventListener("click", () => stopMusic());
 notificationButton?.addEventListener("click", requestNotificationPermission);
 exportButton?.addEventListener("click", exportRecords);
 clearButton?.addEventListener("click", clearRecords);
@@ -141,7 +153,7 @@ renderRecords();
 renderInstallState();
 drawCanvas();
 window.setInterval(renderMonitor, 1000);
-window.setInterval(checkMeditationAlarm, 15000);
+window.setInterval(checkWakeMusicAlarm, 15000);
 
 async function startMonitoring() {
   if (session.active) return;
@@ -157,6 +169,10 @@ async function startMonitoring() {
   }
 
   try {
+    if (settings.startMusicEnabled || settings.wakeMusicEnabled) {
+      await ensureMusicContext().catch(() => {});
+    }
+
     micStream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
     });
@@ -180,8 +196,10 @@ async function startMonitoring() {
     await requestWakeLock();
     frameId = window.requestAnimationFrame(readAudio);
     renderMonitor();
+    showOverlay();
   } catch (error) {
     stopAudio();
+    stopMusic({ closeContext: true });
     setError(error?.name === "NotAllowedError" ? "마이크 권한이 거부되었습니다." : "마이크 연결에 실패했습니다.");
   }
 }
@@ -200,6 +218,7 @@ function stopMonitoring() {
   records = [record, ...records].slice(0, 60);
   saveRecords(records);
   stopAudio();
+  stopMusic({ closeContext: true });
   hideOverlay();
   renderMonitor();
   renderRecords();
@@ -222,8 +241,10 @@ function readAudio() {
   }
 
   if (session.status === "monitoring") {
-    updateMinute(db, now, deltaMs);
-    detectNoise(db, now);
+    if (!isMusicPlaying()) {
+      updateMinute(db, now, deltaMs);
+      detectNoise(db, now);
+    }
   }
 
   addSample(db);
@@ -238,6 +259,7 @@ function finishCalibration() {
   session.baselineDb = base;
   session.thresholdDb = base + Number(settings.sensitivity);
   session.status = "monitoring";
+  startConfiguredSleepMusic();
 }
 
 function updateMinute(db, now, deltaMs) {
@@ -490,7 +512,7 @@ function renderMonitor() {
   if (markAwakeButton) markAwakeButton.disabled = !session.active;
   renderEvents();
   renderOverlay();
-  renderMeditationStatus();
+  renderMusicStatus();
 }
 
 function getStatusText() {
@@ -683,71 +705,108 @@ function stopAudio() {
   releaseWakeLock();
 }
 
-async function playMeditation(reason = "alarm") {
-  stopMeditation();
-  meditationContext = new (window.AudioContext || window.webkitAudioContext)();
-  await meditationContext.resume();
-  const duration = reason === "preview" ? 45 : 180;
-  const now = meditationContext.currentTime;
-  const master = meditationContext.createGain();
-  master.gain.setValueAtTime(0, now);
-  master.gain.linearRampToValueAtTime(0.22, now + 2);
-  master.gain.linearRampToValueAtTime(0, now + duration);
-  master.connect(meditationContext.destination);
+async function ensureMusicContext() {
+  if (!window.AudioContext && !window.webkitAudioContext) {
+    throw new Error("AudioContext is not supported.");
+  }
+  if (!musicContext) musicContext = new (window.AudioContext || window.webkitAudioContext)();
+  if (musicContext.state === "suspended") await musicContext.resume();
+  return musicContext;
+}
 
-  [174.61, 220, 261.63, 329.63].forEach((frequency, index) => {
-    const oscillator = meditationContext.createOscillator();
-    const gain = meditationContext.createGain();
-    oscillator.type = index === 0 ? "sine" : "triangle";
+function startConfiguredSleepMusic() {
+  if (!session.active || session.startMusicStarted || !settings.startMusicEnabled) return;
+  session.startMusicStarted = true;
+  playMusic("sleep", "start").catch(() => {
+    showNotification("숙면웹", "시작음악을 재생하려면 앱 화면에서 미리 듣기를 눌러보세요.");
+  });
+}
+
+async function playMusic(kind, reason = "alarm") {
+  stopMusic();
+  const context = await ensureMusicContext();
+  const minutes = kind === "wake" ? settings.wakeMusicDuration : settings.startMusicDuration;
+  const duration = reason === "preview" ? 45 : clampMusicMinutes(minutes, 10) * 60;
+  const now = context.currentTime;
+  const isWake = kind === "wake";
+  const master = context.createGain();
+  const frequencies = isWake ? [261.63, 329.63, 392, 523.25] : [174.61, 220, 261.63, 329.63];
+
+  master.gain.setValueAtTime(0, now);
+  master.gain.linearRampToValueAtTime(isWake ? 0.2 : 0.16, now + 2);
+  master.gain.linearRampToValueAtTime(isWake ? 0.14 : 0.11, now + Math.max(4, duration - 6));
+  master.gain.linearRampToValueAtTime(0, now + duration);
+  master.connect(context.destination);
+  musicNodes.push(master);
+
+  frequencies.forEach((frequency, index) => {
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = isWake && index >= 2 ? "sine" : "triangle";
     oscillator.frequency.setValueAtTime(frequency, now);
-    oscillator.frequency.linearRampToValueAtTime(frequency * 1.005, now + duration);
-    gain.gain.setValueAtTime(0.05 / (index + 1), now);
+    oscillator.frequency.linearRampToValueAtTime(frequency * (isWake ? 1.018 : 1.006), now + duration);
+    gain.gain.setValueAtTime((isWake ? 0.045 : 0.035) / (index + 1), now);
     oscillator.connect(gain);
     gain.connect(master);
     oscillator.start(now);
     oscillator.stop(now + duration);
-    meditationNodes.push(oscillator, gain);
+    musicNodes.push(oscillator, gain);
   });
 
-  meditationTimer = window.setTimeout(stopMeditation, duration * 1000);
-  if (meditationStop) meditationStop.disabled = false;
-  notifyMeditation(reason);
-  renderMeditationStatus();
+  musicState = {
+    kind,
+    reason,
+    startedAtMs: Date.now(),
+    endsAtMs: Date.now() + duration * 1000,
+  };
+  musicTimer = window.setTimeout(() => stopMusic(), duration * 1000);
+  if (musicStop) musicStop.disabled = false;
+  notifyMusic(kind, reason);
+  renderMusicStatus();
 }
 
-function stopMeditation() {
-  if (meditationTimer) window.clearTimeout(meditationTimer);
-  meditationTimer = null;
-  meditationNodes.forEach((node) => {
+function stopMusic(options = {}) {
+  const { closeContext = false } = options;
+  if (musicTimer) window.clearTimeout(musicTimer);
+  musicTimer = null;
+  musicNodes.forEach((node) => {
     try {
-      node.disconnect();
       node.stop?.();
+      node.disconnect?.();
     } catch {
       // Already stopped.
     }
   });
-  meditationNodes = [];
-  meditationContext?.close().catch(() => {});
-  meditationContext = null;
-  if (meditationStop) meditationStop.disabled = true;
-  renderMeditationStatus();
+  musicNodes = [];
+  musicState = null;
+  if (closeContext) {
+    musicContext?.close().catch(() => {});
+    musicContext = null;
+  }
+  if (musicStop) musicStop.disabled = true;
+  renderMusicStatus();
 }
 
-function checkMeditationAlarm() {
-  if (!settings.meditationEnabled || !settings.meditationTime) return;
+function isMusicPlaying() {
+  return Boolean(musicState && musicState.endsAtMs > Date.now());
+}
+
+function checkWakeMusicAlarm() {
+  if (!session.active || !settings.wakeMusicEnabled || !settings.wakeMusicTime) return;
   const now = new Date();
   const timeKey = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
   const dateKey = getDateKey(now);
-  if (timeKey !== settings.meditationTime || settings.lastMeditationDate === dateKey) return;
-  settings.lastMeditationDate = dateKey;
+  if (timeKey !== settings.wakeMusicTime || settings.lastWakeMusicDate === dateKey) return;
+  settings.lastWakeMusicDate = dateKey;
   saveSettings(settings);
-  playMeditation("alarm").catch(() => {
-    showNotification("숙면웹", "명상음악 시간이 되었어요. 앱 화면에서 미리 듣기를 눌러 재생할 수 있습니다.");
+  playMusic("wake", "alarm").catch(() => {
+    showNotification("숙면웹", "기상음악 시간이 되었어요. 앱 화면에서 미리 듣기를 눌러 재생할 수 있습니다.");
   });
 }
 
-function notifyMeditation(reason) {
-  const message = reason === "preview" ? "명상음악 미리 듣기 중입니다." : "명상음악 시간이 되었어요.";
+function notifyMusic(kind, reason) {
+  const name = kind === "wake" ? "기상음악" : "시작음악";
+  const message = reason === "preview" ? `${name} 미리 듣기 중입니다.` : `${name}이 재생됩니다.`;
   showNotification("숙면웹", message);
 }
 
@@ -762,18 +821,20 @@ async function requestNotificationPermission() {
     return;
   }
   await Notification.requestPermission();
-  renderMeditationStatus();
+  renderMusicStatus();
 }
 
-function renderMeditationStatus() {
-  if (!meditationStatus) return;
-  if (!settings.meditationEnabled) {
-    meditationStatus.textContent = "꺼짐";
-  } else if (meditationContext) {
-    meditationStatus.textContent = "재생 중";
-  } else {
-    meditationStatus.textContent = `${settings.meditationTime} 알림`;
+function renderMusicStatus() {
+  if (!musicStatus) return;
+  if (isMusicPlaying()) {
+    musicStatus.textContent = musicState?.kind === "wake" ? "기상음악 재생 중" : "시작음악 재생 중";
+    return;
   }
+
+  const summaries = [];
+  if (settings.startMusicEnabled) summaries.push(`시작 ${settings.startMusicDuration}분`);
+  if (settings.wakeMusicEnabled) summaries.push(`기상 ${settings.wakeMusicTime} · ${settings.wakeMusicDuration}분`);
+  musicStatus.textContent = summaries.length ? summaries.join(" · ") : "음악 꺼짐";
 }
 
 function updateSettings() {
@@ -785,8 +846,11 @@ function updateSettings() {
   settings.sensitivity = Number(sensitivityInput?.value || settings.sensitivity);
   settings.sharedBedMode = Boolean(sharedBedInput?.checked);
   settings.keepAwake = Boolean(keepAwakeInput?.checked);
-  settings.meditationEnabled = Boolean(meditationEnabled?.checked);
-  settings.meditationTime = meditationTime?.value || settings.meditationTime;
+  settings.startMusicEnabled = Boolean(startMusicEnabled?.checked);
+  settings.startMusicDuration = clampMusicMinutes(startMusicDuration?.value, settings.startMusicDuration);
+  settings.wakeMusicEnabled = Boolean(wakeMusicEnabled?.checked);
+  settings.wakeMusicTime = wakeMusicTime?.value || settings.wakeMusicTime;
+  settings.wakeMusicDuration = clampMusicMinutes(wakeMusicDuration?.value, settings.wakeMusicDuration);
   if (session.baselineDb !== null) session.thresholdDb = session.baselineDb + Number(settings.sensitivity);
   saveSettings(settings);
   renderSettings();
@@ -806,9 +870,12 @@ function renderSettings() {
   if (sensitivityLabel) sensitivityLabel.textContent = settings.sensitivity <= 9 ? "예민" : settings.sensitivity >= 18 ? "둔감" : "보통";
   if (sharedBedInput) sharedBedInput.checked = settings.sharedBedMode;
   if (keepAwakeInput) keepAwakeInput.checked = settings.keepAwake;
-  if (meditationEnabled) meditationEnabled.checked = settings.meditationEnabled;
-  if (meditationTime) meditationTime.value = settings.meditationTime;
-  renderMeditationStatus();
+  if (startMusicEnabled) startMusicEnabled.checked = settings.startMusicEnabled;
+  if (startMusicDuration) startMusicDuration.value = String(settings.startMusicDuration);
+  if (wakeMusicEnabled) wakeMusicEnabled.checked = settings.wakeMusicEnabled;
+  if (wakeMusicTime) wakeMusicTime.value = settings.wakeMusicTime;
+  if (wakeMusicDuration) wakeMusicDuration.value = String(settings.wakeMusicDuration);
+  renderMusicStatus();
 }
 
 async function requestWakeLock() {
@@ -885,6 +952,7 @@ function createSession() {
     wakeWindows: [],
     samples: [],
     candidate: null,
+    startMusicStarted: false,
   };
 }
 
@@ -1001,9 +1069,13 @@ function loadSettings() {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
     const nextSettings = { ...DEFAULT_SETTINGS, ...saved };
     if (!saved.sleepMode) nextSettings.sleepMode = saved.sharedBedMode === false ? "single" : "two";
+    if (saved.meditationEnabled && saved.wakeMusicEnabled === undefined) nextSettings.wakeMusicEnabled = true;
+    if (saved.meditationTime && saved.wakeMusicTime === undefined) nextSettings.wakeMusicTime = saved.meditationTime;
     nextSettings.primaryName = normalizeName(nextSettings.primaryName, DEFAULT_SETTINGS.primaryName);
     nextSettings.secondaryName = normalizeName(nextSettings.secondaryName, DEFAULT_SETTINGS.secondaryName);
     if (!["self", "partner", "center"].includes(nextSettings.phoneSide)) nextSettings.phoneSide = DEFAULT_SETTINGS.phoneSide;
+    nextSettings.startMusicDuration = clampMusicMinutes(nextSettings.startMusicDuration, DEFAULT_SETTINGS.startMusicDuration);
+    nextSettings.wakeMusicDuration = clampMusicMinutes(nextSettings.wakeMusicDuration, DEFAULT_SETTINGS.wakeMusicDuration);
     return nextSettings;
   } catch {
     return { ...DEFAULT_SETTINGS };
@@ -1102,4 +1174,10 @@ function createId() {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function clampMusicMinutes(value, fallback) {
+  const minutes = Number.parseInt(value, 10);
+  if (!Number.isFinite(minutes)) return clamp(fallback || 10, 1, 30);
+  return clamp(minutes, 1, 30);
 }

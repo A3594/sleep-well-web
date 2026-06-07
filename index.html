@@ -63,24 +63,55 @@
           <p data-depth-note>측정이 시작되면 조용한 구간, 방해 소리, 깸 가능성을 함께 봅니다.</p>
         </section>
 
-        <section class="meditation-panel">
+        <section class="music-panel">
           <div class="panel-line">
             <div>
-              <strong>명상음악 알림</strong>
-              <span data-meditation-status>꺼짐</span>
+              <strong>수면 음악</strong>
+              <span data-music-status>시작음악 준비</span>
             </div>
-            <label class="switch">
-              <input type="checkbox" data-meditation-enabled />
-              <span>사용</span>
-            </label>
           </div>
-          <div class="meditation-controls">
-            <label>
-              <span>알림 시간</span>
-              <input type="time" data-meditation-time />
-            </label>
-            <button type="button" data-meditation-preview>미리 듣기</button>
-            <button type="button" data-meditation-stop disabled>정지</button>
+          <div class="music-grid">
+            <article class="music-card">
+              <div class="panel-line">
+                <div>
+                  <strong>시작음악</strong>
+                  <span>잠들기 시작할 때</span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" data-start-music-enabled />
+                  <span>사용</span>
+                </label>
+              </div>
+              <label>
+                <span>재생 시간</span>
+                <input type="number" min="1" max="30" step="1" inputmode="numeric" data-start-music-duration />
+              </label>
+              <button type="button" data-start-music-preview>미리 듣기</button>
+            </article>
+            <article class="music-card">
+              <div class="panel-line">
+                <div>
+                  <strong>기상음악</strong>
+                  <span>정한 시간에</span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" data-wake-music-enabled />
+                  <span>사용</span>
+                </label>
+              </div>
+              <div class="music-fields">
+                <label>
+                  <span>기상 시간</span>
+                  <input type="time" data-wake-music-time />
+                </label>
+                <label>
+                  <span>재생 시간</span>
+                  <input type="number" min="1" max="30" step="1" inputmode="numeric" data-wake-music-duration />
+                </label>
+              </div>
+              <button type="button" data-wake-music-preview>미리 듣기</button>
+            </article>
+            <button class="music-stop-button" type="button" data-music-stop disabled>음악 정지</button>
           </div>
         </section>
 

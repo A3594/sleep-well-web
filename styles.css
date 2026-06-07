@@ -128,7 +128,7 @@ svg {
 .install-panel,
 .hero-panel,
 .depth-panel,
-.meditation-panel,
+.music-panel,
 .sleeper-panel,
 .metrics-grid article,
 .event-panel,
@@ -161,7 +161,8 @@ svg {
 .install-panel button,
 .subtle-button,
 .data-actions button,
-.meditation-controls button {
+.music-card button,
+.music-stop-button {
   min-height: 42px;
   border: 0;
   border-radius: 8px;
@@ -264,7 +265,7 @@ svg {
 }
 
 .depth-panel,
-.meditation-panel,
+.music-panel,
 .sleeper-panel,
 .event-panel,
 .setting-panel {
@@ -301,9 +302,15 @@ svg {
 
 .switch {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 7px;
   font-weight: 850;
+  white-space: nowrap;
+}
+
+.switch span {
+  display: inline;
 }
 
 .switch input,
@@ -312,15 +319,29 @@ svg {
   height: 22px;
 }
 
-.meditation-controls {
+.music-grid {
   display: grid;
-  grid-template-columns: 1fr auto auto;
   gap: 8px;
-  align-items: end;
   margin-top: 12px;
 }
 
-.meditation-controls label span {
+.music-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #e5edf1;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.music-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.music-card label span,
+.music-fields label span {
   display: block;
   margin-bottom: 5px;
   color: var(--muted);
@@ -328,7 +349,8 @@ svg {
   font-weight: 850;
 }
 
-.meditation-controls input {
+.music-card input,
+.music-fields input {
   width: 100%;
   min-height: 42px;
   border: 1px solid var(--line);
@@ -337,11 +359,16 @@ svg {
   background: #fbfcfe;
 }
 
-.meditation-controls button,
+.music-card button,
+.music-stop-button,
 .subtle-button,
 .record-list button {
   background: #e6f4f0;
   color: var(--primary);
+}
+
+.music-stop-button {
+  width: 100%;
 }
 
 .sleeper-grid {
@@ -632,7 +659,7 @@ svg {
 
 @media (max-width: 390px) {
   .hero-panel,
-  .meditation-controls,
+  .music-fields,
   .sleeper-grid {
     grid-template-columns: 1fr;
   }

@@ -1,4 +1,4 @@
-const CACHE_NAME = "sukmyeon-web-v3";
+const CACHE_NAME = "sukmyeon-web-v4";
 const APP_ASSETS = [
   "./",
   "./index.html",
